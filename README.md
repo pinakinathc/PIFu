@@ -10,6 +10,10 @@
 - `touch training_data/val.txt`
 - `python -m apps.train_shape --dataroot=path/to/training_data/`
 
+------------------------------------------------------------
+
+## Original README:
+
 [![report](https://img.shields.io/badge/arxiv-report-red)](https://arxiv.org/abs/1905.05172) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1GFSsqP2BWz4gtq0e-nki00ZHSirXwFyY)
 
 News:
