@@ -15,7 +15,7 @@ log.setLevel(40)
 
 def load_trimesh(root_dir):
     folders = os.listdir(root_dir)
-    folders = ['X0FKMMUXKZVB'] # TODO: revert
+    # folders = ['X0FKMMUXKZVB'] # TODO: revert
     meshs = {}
     for i, f in enumerate(folders):
         sub_name = f
@@ -101,7 +101,7 @@ class TrainDataset(Dataset):
 
     def get_subjects(self):
         all_subjects = os.listdir(self.RENDER)
-        all_subjects = ['X0FKMMUXKZVB'] # TODO: revert
+        # all_subjects = ['X0FKMMUXKZVB'] # TODO: revert
         var_subjects = np.loadtxt(os.path.join(self.root, 'val.txt'), dtype=str)
         if len(var_subjects) == 0:
             return all_subjects
