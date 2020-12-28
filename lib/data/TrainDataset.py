@@ -15,10 +15,11 @@ log.setLevel(40)
 
 def load_trimesh(root_dir):
     folders = os.listdir(root_dir)
+    folders = ['X0FKMMUXKZVB'] # TODO: revert
     meshs = {}
     for i, f in enumerate(folders):
         sub_name = f
-        meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, '%s_100k.obj' % sub_name))
+        meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r.obj'))
 
     return meshs
 
@@ -54,7 +55,8 @@ class TrainDataset(Dataset):
 
     def __init__(self, opt, phase='train'):
         self.opt = opt
-        self.projection_mode = 'orthogonal'
+        # self.projection_mode = 'orthogonal'
+        self.projection_mode = 'perspective'
 
         # Path setup
         self.root = self.opt.dataroot
@@ -99,6 +101,7 @@ class TrainDataset(Dataset):
 
     def get_subjects(self):
         all_subjects = os.listdir(self.RENDER)
+        all_subjects = ['X0FKMMUXKZVB'] # TODO: revert
         var_subjects = np.loadtxt(os.path.join(self.root, 'val.txt'), dtype=str)
         if len(var_subjects) == 0:
             return all_subjects
@@ -106,7 +109,8 @@ class TrainDataset(Dataset):
         if self.is_train:
             return sorted(list(set(all_subjects) - set(var_subjects)))
         else:
-            return sorted(list(var_subjects))
+            return sorted(list(set(all_subjects) - set(var_subjects)))
+            # return sorted(list(var_subjects))
 
     def __len__(self):
         return len(self.subjects) * len(self.yaw_list) * len(self.pitch_list)
@@ -138,35 +142,11 @@ class TrainDataset(Dataset):
 
         for vid in view_ids:
             param_path = os.path.join(self.PARAM, subject, '%d_%d_%02d.npy' % (vid, pitch, 0))
-            render_path = os.path.join(self.RENDER, subject, '%d_%d_%02d.jpg' % (vid, pitch, 0))
+            render_path = os.path.join(self.RENDER, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
             mask_path = os.path.join(self.MASK, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
 
             # loading calibration data
             param = np.load(param_path, allow_pickle=True)
-            # pixel unit / world unit
-            ortho_ratio = param.item().get('ortho_ratio')
-            # world unit / model unit
-            scale = param.item().get('scale')
-            # camera center world coordinate
-            center = param.item().get('center')
-            # model rotation
-            R = param.item().get('R')
-
-            translate = -np.matmul(R, center).reshape(3, 1)
-            extrinsic = np.concatenate([R, translate], axis=1)
-            extrinsic = np.concatenate([extrinsic, np.array([0, 0, 0, 1]).reshape(1, 4)], 0)
-            # Match camera space to image pixel space
-            scale_intrinsic = np.identity(4)
-            scale_intrinsic[0, 0] = scale / ortho_ratio
-            scale_intrinsic[1, 1] = -scale / ortho_ratio
-            scale_intrinsic[2, 2] = scale / ortho_ratio
-            # Match image pixel space to image uv space
-            uv_intrinsic = np.identity(4)
-            uv_intrinsic[0, 0] = 1.0 / float(self.opt.loadSize // 2)
-            uv_intrinsic[1, 1] = 1.0 / float(self.opt.loadSize // 2)
-            uv_intrinsic[2, 2] = 1.0 / float(self.opt.loadSize // 2)
-            # Transform under image pixel space
-            trans_intrinsic = np.identity(4)
 
             mask = Image.open(mask_path).convert('L')
             render = Image.open(render_path).convert('RGB')
@@ -206,9 +186,6 @@ class TrainDataset(Dataset):
                     dx = 0
                     dy = 0
 
-                trans_intrinsic[0, 3] = -dx / float(self.opt.loadSize // 2)
-                trans_intrinsic[1, 3] = -dy / float(self.opt.loadSize // 2)
-
                 x1 = int(round((w - tw) / 2.)) + dx
                 y1 = int(round((h - th) / 2.)) + dy
 
@@ -222,9 +199,7 @@ class TrainDataset(Dataset):
                     blur = GaussianBlur(np.random.uniform(0, self.opt.aug_blur))
                     render = render.filter(blur)
 
-            intrinsic = np.matmul(trans_intrinsic, np.matmul(uv_intrinsic, scale_intrinsic))
-            calib = torch.Tensor(np.matmul(intrinsic, extrinsic)).float()
-            extrinsic = torch.Tensor(extrinsic).float()
+            calib = torch.Tensor(param).float()
 
             mask = transforms.Resize(self.load_size)(mask)
             mask = transforms.ToTensor()(mask).float()
@@ -235,12 +210,10 @@ class TrainDataset(Dataset):
 
             render_list.append(render)
             calib_list.append(calib)
-            extrinsic_list.append(extrinsic)
 
         return {
             'img': torch.stack(render_list, dim=0),
             'calib': torch.stack(calib_list, dim=0),
-            'extrinsic': torch.stack(extrinsic_list, dim=0),
             'mask': torch.stack(mask_list, dim=0)
         }
 
@@ -367,6 +340,7 @@ class TrainDataset(Dataset):
         if self.opt.num_sample_inout:
             sample_data = self.select_sampling_method(subject)
             res.update(sample_data)
+        return res
         
         # img = np.uint8((np.transpose(render_data['img'][0].numpy(), (1, 2, 0)) * 0.5 + 0.5)[:, :, ::-1] * 255.0)
         # rot = render_data['calib'][0,:3, :3]
