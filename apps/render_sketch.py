@@ -96,6 +96,24 @@ if __name__ == '__main__':
     angle_step = 1
 
     for shirt_idx, shirt_data_path in enumerate(objects_shirt_list):
+
+        folder_name = os.path.split(shirt_data_path)[0]
+        folder_name = os.path.split(folder_name)[-1]
+
+        obj_path = os.path.join(output_dir, 'GEO', 'OBJ', folder_name)
+        render_path = os.path.join(output_dir, 'RENDER', folder_name)
+        param_path = os.path.join(output_dir, 'PARAM', folder_name)
+        mask_path = os.path.join(output_dir, 'MASK', folder_name)
+
+        if os.path.exists(os.path.join(mask_path, '359_0_00.png')):
+            print ('skipping already rendered object...')
+            continue
+
+        os.makedirs(obj_path, exist_ok=True)
+        os.makedirs(render_path, exist_ok=True)
+        os.makedirs(param_path, exist_ok=True)
+        os.makedirs(mask_path, exist_ok=True)
+
         objs = [ob for ob in bpy.context.scene.objects if ob.type in ('MESH')]
         bpy.ops.object.delete({'selected_objects': objs})
         bpy.ops.import_scene.obj(filepath=shirt_data_path)
@@ -106,22 +124,6 @@ if __name__ == '__main__':
         bpy.context.scene.cycles.device = opt.device
         bpy.context.scene.camera.data.type = 'ORTHO'
         bpy.data.worlds['World'].node_tree.nodes['Background'].inputs[0].default_value = (1,1,1,1)
-
-        folder_name = os.path.split(shirt_data_path)[0]
-        folder_name = os.path.split(folder_name)[-1]
-
-        obj_path = os.path.join(output_dir, 'GEO', 'OBJ', folder_name)
-        render_path = os.path.join(output_dir, 'RENDER', folder_name)
-        param_path = os.path.join(output_dir, 'PARAM', folder_name)
-        mask_path = os.path.join(output_dir, 'MASK', folder_name)
-
-        if os.path.exists(obj_path):
-            continue
-
-        os.makedirs(obj_path, exist_ok=True)
-        os.makedirs(render_path, exist_ok=True)
-        os.makedirs(param_path, exist_ok=True)
-        os.makedirs(mask_path, exist_ok=True)
 
         # copy obj file
         cmd = 'cp %s %s' % (shirt_data_path, obj_path)
