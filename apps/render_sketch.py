@@ -84,7 +84,7 @@ def get_3x4_P_matrix_from_blender(cam):
 
 
 if __name__ == '__main__':
-    parser = argparse(description='Created render of 2D sketch from 3D')
+    parser = argparse.ArgumentParser(description='Created render of 2D sketch from 3D')
     parser.add_argument('--input_dir', type=str, default='/vol/research/sketchcaption/extras/adobe-dataset/shirt_dataset_rest/*/shirt_mesh_r.obj',
             help='Enter input dir to raw dataset')
     parser.add_argument('--output_dir', type=str, default='../training_data', help='Enter output dir to rendered dataset')
