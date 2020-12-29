@@ -115,6 +115,9 @@ if __name__ == '__main__':
         param_path = os.path.join(output_dir, 'PARAM', folder_name)
         mask_path = os.path.join(output_dir, 'MASK', folder_name)
 
+        if os.path.exists(obj_path):
+            continue
+
         os.makedirs(obj_path, exist_ok=True)
         os.makedirs(render_path, exist_ok=True)
         os.makedirs(param_path, exist_ok=True)
