@@ -88,6 +88,7 @@ if __name__ == '__main__':
     parser.add_argument('--input_dir', type=str, default='/vol/research/sketchcaption/extras/adobe-dataset/shirt_dataset_rest/*/shirt_mesh_r.obj',
             help='Enter input dir to raw dataset')
     parser.add_argument('--output_dir', type=str, default='../training_data', help='Enter output dir to rendered dataset')
+    parser.add_argument('--device', type=str, default='GPU', help='Use CPU or GPU')
     opt = parser.parse_args()
 
     objects_shirt_list = glob.glob(opt.input_dir)
@@ -102,6 +103,7 @@ if __name__ == '__main__':
         # Setup env and center object
         bpy.ops.transform.translate(value=(0,0,0))
         bpy.context.scene.render.engine = 'CYCLES'
+        bpy.context.scene.cycles.device = opt.device
         bpy.context.scene.camera.data.type = 'ORTHO'
         bpy.data.worlds['World'].node_tree.nodes['Background'].inputs[0].default_value = (1,1,1,1)
 
