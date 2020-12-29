@@ -4,6 +4,7 @@
 import os
 import glob
 import random
+import argparse
 import numpy as np
 import bpy
 import bpy_extras
@@ -83,8 +84,14 @@ def get_3x4_P_matrix_from_blender(cam):
 
 
 if __name__ == '__main__':
-    objects_shirt_list = glob.glob('/vol/research/sketchcaption/extras/adobe-dataset/shirt_dataset_rest/*/shirt_mesh_r.obj')
-    output_dir = 'training_data'
+    parser = argparse(description='Created render of 2D sketch from 3D')
+    parser.add_argument('--input_dir', type=str, default='/vol/research/sketchcaption/extras/adobe-dataset/shirt_dataset_rest/*/shirt_mesh_r.obj',
+            help='Enter input dir to raw dataset')
+    parser.add_argument('--output_dir', type=str, default='../training_data', help='Enter output dir to rendered dataset')
+    opt = parser.parse_args()
+
+    objects_shirt_list = glob.glob(opt.input_dir)
+    output_dir = opt.output_dir
     angle_step = 1
 
     for shirt_idx, shirt_data_path in enumerate(objects_shirt_list):
