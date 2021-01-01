@@ -122,6 +122,10 @@ if __name__ == '__main__':
         bpy.ops.transform.translate(value=(0,0,0))
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = opt.device
+        cycles_preferences = bpy.context.preferences.addons['cycles'].preferences
+        cuda_devices, opencl_devices = cycles_preferences.get_devices()
+        cycles_preferences.compute_device_type = 'CUDA'
+        cuda_devices, opencl_devices = cycles_preferences.get_devices()
         bpy.context.scene.camera.data.type = 'ORTHO'
         bpy.data.worlds['World'].node_tree.nodes['Background'].inputs[0].default_value = (1,1,1,1)
 
