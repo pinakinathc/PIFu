@@ -126,6 +126,8 @@ if __name__ == '__main__':
         cuda_devices, opencl_devices = cycles_preferences.get_devices()
         cycles_preferences.compute_device_type = 'CUDA'
         cuda_devices, opencl_devices = cycles_preferences.get_devices()
+        for device in cuda_devices:
+            device.use = True
         bpy.context.scene.camera.data.type = 'ORTHO'
         bpy.data.worlds['World'].node_tree.nodes['Background'].inputs[0].default_value = (1,1,1,1)
 
