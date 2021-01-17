@@ -9,6 +9,8 @@ import torch
 from PIL.ImageFilter import GaussianBlur
 import trimesh
 import logging
+import math
+from apps.render_data import make_rotate
 
 log = logging.getLogger('trimesh')
 log.setLevel(40)
@@ -18,7 +20,8 @@ def load_trimesh(root_dir):
     meshs = {}
     for i, f in enumerate(folders):
         sub_name = f
-        meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, '%s_100k.obj' % sub_name))
+        # meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, '%s_100k.obj' % sub_name))
+        meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r.obj'))
 
     return meshs
 
@@ -137,20 +140,34 @@ class TrainDataset(Dataset):
         extrinsic_list = []
 
         for vid in view_ids:
-            param_path = os.path.join(self.PARAM, subject, '%d_%d_%02d.npy' % (vid, pitch, 0))
-            render_path = os.path.join(self.RENDER, subject, '%d_%d_%02d.jpg' % (vid, pitch, 0))
+            # param_path = os.path.join(self.PARAM, subject, '%d_%d_%02d.npy' % (vid, pitch, 0))
+            render_path = os.path.join(self.RENDER, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
             mask_path = os.path.join(self.MASK, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
 
             # loading calibration data
-            param = np.load(param_path, allow_pickle=True)
+            # param = np.load(param_path, allow_pickle=True)
             # pixel unit / world unit
-            ortho_ratio = param.item().get('ortho_ratio')
+            ortho_ratio = 0.4 * (512 / 512) # ortho_ratio = param.item().get('ortho_ratio')
+            
             # world unit / model unit
-            scale = param.item().get('scale')
+            vertices = self.mesh_dic[subject].vertices
+            vmin = vertices.min(0)
+            vmax = vertices.max(0)
+            up_axis = 1 if (vmax-vmin).argmax() == 1 else 2
+            
+            vmed = np.median(vertices, 0)
+            vmed[up_axis] = 0.5*(vmax[up_axis]+vmin[up_axis])
+            scale = 180/(vmax[up_axis] - vmin[up_axis])
+            # scale = param.item().get('scale')
+
             # camera center world coordinate
-            center = param.item().get('center')
+            center = vmed # center = param.item().get('center')
+
             # model rotation
-            R = param.item().get('R')
+            R = np.matmul(make_rotate(math.radians(pitch), 0, 0), make_rotate(0, math.radians(vid), 0))
+            if up_axis == 2:
+                R = np.matmul(R, make_rotate(math.radians(90),0,0))
+            # R = param.item().get('R')
 
             translate = -np.matmul(R, center).reshape(3, 1)
             extrinsic = np.concatenate([R, translate], axis=1)
