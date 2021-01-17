@@ -16,7 +16,7 @@ dependencies:
 - trimesh
 - numpy
 - pip
-  pip:
+- pip:
   - xxhash
   - PyOpenGL
   - pyexr
