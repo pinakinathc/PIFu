@@ -147,13 +147,14 @@ class TrainDataset(Dataset):
             # loading calibration data
             # param = np.load(param_path, allow_pickle=True)
             # pixel unit / world unit
-            ortho_ratio = 0.4 * (512 / 512) # ortho_ratio = param.item().get('ortho_ratio')
+            ortho_ratio = 0.4 * (512 / self.load_size) # ortho_ratio = param.item().get('ortho_ratio')
             
             # world unit / model unit
             vertices = self.mesh_dic[subject].vertices
             vmin = vertices.min(0)
             vmax = vertices.max(0)
-            up_axis = 1 if (vmax-vmin).argmax() == 1 else 2
+            # up_axis = 1 if (vmax-vmin).argmax() == 1 else 2
+            up_axis = 1
             
             vmed = np.median(vertices, 0)
             vmed[up_axis] = 0.5*(vmax[up_axis]+vmin[up_axis])
@@ -268,11 +269,17 @@ class TrainDataset(Dataset):
             torch.manual_seed(1991)
         mesh = self.mesh_dic[subject]
         surface_points, _ = trimesh.sample.sample_surface(mesh, 4 * self.num_sample_inout)
-        sample_points = surface_points + np.random.normal(scale=self.opt.sigma, size=surface_points.shape)
+        # sample_points = surface_points + np.random.normal(scale=self.opt.sigma, size=surface_points.shape)
+        sample_points = surface_points + np.random.normal(scale=0.2, size=surface_points.shape)
 
         # add random points within image space
-        length = self.B_MAX - self.B_MIN
-        random_points = np.random.rand(self.num_sample_inout // 4, 3) * length + self.B_MIN
+        # length = self.B_MAX - self.B_MIN
+        # random_points = np.random.rand(self.num_sample_inout // 4, 3) * length + self.B_MIN
+
+        B_MAX = sample_points.max(0)
+        B_MIN = sample_points.min(0)
+        length = (B_MAX - B_MIN)
+        random_points = np.random.rand(self.num_sample_inout // 4, 3) * length + B_MIN
         sample_points = np.concatenate([sample_points, random_points], 0)
         np.random.shuffle(sample_points)
 
@@ -287,6 +294,7 @@ class TrainDataset(Dataset):
                          :self.num_sample_inout // 2] if nin > self.num_sample_inout // 2 else outside_points[
                                                                                                :(self.num_sample_inout - nin)]
 
+        # print ('inside points & outside points: ', inside_points.shape, outside_points.shape)
         samples = np.concatenate([inside_points, outside_points], 0).T
         labels = np.concatenate([np.ones((1, inside_points.shape[0])), np.zeros((1, outside_points.shape[0]))], 1)
 

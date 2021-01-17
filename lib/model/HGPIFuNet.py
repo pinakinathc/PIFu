@@ -80,13 +80,13 @@ class HGPIFuNet(BasePIFuNet):
         if labels is not None:
             self.labels = labels
 
-        import trimesh
-        point_cloud = trimesh.points.PointCloud(points.permute(0, 2, 1)[0].cpu().numpy())
-        point_cloud.show()
+        # import trimesh
+        # point_cloud = trimesh.points.PointCloud(points.permute(0, 2, 1)[0].cpu().numpy())
+        # point_cloud.show()
 
         xyz = self.projection(points, calibs, transforms)
-        point_cloud = trimesh.points.PointCloud(xyz.permute(0, 2, 1)[0].cpu().numpy())
-        point_cloud.show()
+        # point_cloud = trimesh.points.PointCloud(xyz.permute(0, 2, 1)[0].cpu().numpy())
+        # point_cloud.show()
 
         xy = xyz[:, :2, :]
         z = xyz[:, 2:3, :]
