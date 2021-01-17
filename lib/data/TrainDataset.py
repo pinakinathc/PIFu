@@ -9,6 +9,8 @@ import torch
 from PIL.ImageFilter import GaussianBlur
 import trimesh
 import logging
+import math
+from apps.render_data import make_rotate
 
 log = logging.getLogger('trimesh')
 log.setLevel(40)
@@ -19,6 +21,7 @@ def load_trimesh(root_dir):
     meshs = {}
     for i, f in enumerate(folders):
         sub_name = f
+        # meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, '%s_100k.obj' % sub_name))
         meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r.obj'))
 
     return meshs
@@ -141,12 +144,51 @@ class TrainDataset(Dataset):
         extrinsic_list = []
 
         for vid in view_ids:
-            param_path = os.path.join(self.PARAM, subject, '%d_%d_%02d.npy' % (vid, pitch, 0))
+            # param_path = os.path.join(self.PARAM, subject, '%d_%d_%02d.npy' % (vid, pitch, 0))
             render_path = os.path.join(self.RENDER, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
             mask_path = os.path.join(self.MASK, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
 
             # loading calibration data
-            param = np.load(param_path, allow_pickle=True)
+            # param = np.load(param_path, allow_pickle=True)
+            # pixel unit / world unit
+            ortho_ratio = 0.4 * (512 / self.load_size) # ortho_ratio = param.item().get('ortho_ratio')
+            
+            # world unit / model unit
+            vertices = self.mesh_dic[subject].vertices
+            vmin = vertices.min(0)
+            vmax = vertices.max(0)
+            # up_axis = 1 if (vmax-vmin).argmax() == 1 else 2
+            up_axis = 1
+            
+            vmed = np.median(vertices, 0)
+            vmed[up_axis] = 0.5*(vmax[up_axis]+vmin[up_axis])
+            scale = 180/(vmax[up_axis] - vmin[up_axis])
+            # scale = param.item().get('scale')
+
+            # camera center world coordinate
+            center = vmed # center = param.item().get('center')
+
+            # model rotation
+            R = np.matmul(make_rotate(math.radians(pitch), 0, 0), make_rotate(0, math.radians(vid), 0))
+            if up_axis == 2:
+                R = np.matmul(R, make_rotate(math.radians(90),0,0))
+            # R = param.item().get('R')
+
+            translate = -np.matmul(R, center).reshape(3, 1)
+            extrinsic = np.concatenate([R, translate], axis=1)
+            extrinsic = np.concatenate([extrinsic, np.array([0, 0, 0, 1]).reshape(1, 4)], 0)
+            # Match camera space to image pixel space
+            scale_intrinsic = np.identity(4)
+            scale_intrinsic[0, 0] = scale / ortho_ratio
+            scale_intrinsic[1, 1] = -scale / ortho_ratio
+            scale_intrinsic[2, 2] = scale / ortho_ratio
+            # Match image pixel space to image uv space
+            uv_intrinsic = np.identity(4)
+            uv_intrinsic[0, 0] = 1.0 / float(self.opt.loadSize // 2)
+            uv_intrinsic[1, 1] = 1.0 / float(self.opt.loadSize // 2)
+            uv_intrinsic[2, 2] = 1.0 / float(self.opt.loadSize // 2)
+            # Transform under image pixel space
+            trans_intrinsic = np.identity(4)
 
             mask = Image.open(mask_path).convert('L')
             render = Image.open(render_path).convert('RGB')
@@ -224,11 +266,17 @@ class TrainDataset(Dataset):
             torch.manual_seed(1991)
         mesh = self.mesh_dic[subject]
         surface_points, _ = trimesh.sample.sample_surface(mesh, 4 * self.num_sample_inout)
-        sample_points = surface_points + np.random.normal(scale=self.opt.sigma, size=surface_points.shape)
+        # sample_points = surface_points + np.random.normal(scale=self.opt.sigma, size=surface_points.shape)
+        sample_points = surface_points + np.random.normal(scale=0.2, size=surface_points.shape)
 
         # add random points within image space
-        length = self.B_MAX - self.B_MIN
-        random_points = np.random.rand(self.num_sample_inout // 4, 3) * length + self.B_MIN
+        # length = self.B_MAX - self.B_MIN
+        # random_points = np.random.rand(self.num_sample_inout // 4, 3) * length + self.B_MIN
+
+        B_MAX = sample_points.max(0)
+        B_MIN = sample_points.min(0)
+        length = (B_MAX - B_MIN)
+        random_points = np.random.rand(self.num_sample_inout // 4, 3) * length + B_MIN
         sample_points = np.concatenate([sample_points, random_points], 0)
         np.random.shuffle(sample_points)
 
@@ -243,6 +291,7 @@ class TrainDataset(Dataset):
                          :self.num_sample_inout // 2] if nin > self.num_sample_inout // 2 else outside_points[
                                                                                                :(self.num_sample_inout - nin)]
 
+        # print ('inside points & outside points: ', inside_points.shape, outside_points.shape)
         samples = np.concatenate([inside_points, outside_points], 0).T
         labels = np.concatenate([np.ones((1, inside_points.shape[0])), np.zeros((1, outside_points.shape[0]))], 1)
 

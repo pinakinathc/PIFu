@@ -47,10 +47,15 @@ def train(opt):
     print('test data size: ', len(test_data_loader))
 
     # create net
-    netG = HGPIFuNet(opt, projection_mode).to(device=cuda)
+    device_ids = list(map(int, opt.gpu_ids.split(',')))
+    netG = HGPIFuNet(opt, projection_mode)
+    print('Using Network: ', netG.name)
+    if len(device_ids) > 1:
+        print ('Using Multi-GPU')
+        netG = torch.nn.DataParallel(netG, device_ids=device_ids)
+    netG.to(device=cuda)
     optimizerG = torch.optim.RMSprop(netG.parameters(), lr=opt.learning_rate, momentum=0, weight_decay=0)
     lr = opt.learning_rate
-    print('Using Network: ', netG.name)
     
     def set_train():
         netG.train()
@@ -105,6 +110,7 @@ def train(opt):
             res, error = netG.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
 
             optimizerG.zero_grad()
+            error = torch.mean(error)
             error.backward()
             optimizerG.step()
 
