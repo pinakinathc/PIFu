@@ -6,6 +6,7 @@ channels:
 dependencies:
 - opencv
 - pytorch=1.1.0
+- torchvision
 - pillow
 - scikit-image
 - tqdm
