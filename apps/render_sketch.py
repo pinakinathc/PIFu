@@ -6,7 +6,7 @@ import glob
 import argparse
 import numpy as np
 import warnings
-from multiprocessing import Process
+from multiprocessing import Process, Pool
 
 import bpy
 from render_freestyle_svg import register
@@ -47,7 +47,7 @@ def find_longest_diagonal(imported):
 
 
 def fill_in_camera_positions():
-    num_base_viewpoints = 360 # TODO: change to 360
+    num_base_viewpoints = 30 # TODO: change to 360
     num_add_viewpoints = 0
 
     random_state = np.random.RandomState()
@@ -92,7 +92,8 @@ def fill_in_camera_positions():
     return azis, elevs, x_pos, y_pos, z_pos
 
 
-def render(opt, filepath):
+def render(filepath):
+    global opt
 
     ####### Init Setup #########
     folder_name = os.path.split(filepath)[0]
@@ -236,23 +237,14 @@ if __name__ == '__main__':
     parser.add_argument('--input_dir', type=str, default='/vol/research/sketchcaption/extras/adobe-dataset/shirt_dataset_rest/*/shirt_mesh_r.obj', help='Enter input dir to raw dataset')
     parser.add_argument('--output_dir', type=str, default='../training_data/', help='Enter output dir')
     parser.add_argument('--device', type=str, default='CUDA', help='Use CPU or GPU')
-    parser.add_argument('--num_process', type=int, default=32, help='Number of Parallel Processes')
+    parser.add_argument('--num_process', type=int, default=None, help='Number of Parallel Processes')
     opt = parser.parse_args()
 
     print ('Options:\n', opt)
 
-    obj_shirt_list = glob.glob(opt.input_dir)
+    obj_shirt_list = glob.glob(opt.input_dir)[:7]
     count = 0
 
-    while (count < len(obj_shirt_list)):
-        process_list = []
-        for i in range(opt.num_process):
-            try:
-                filename = obj_shirt_list[count]
-                count += 1
-            except IndexError:
-                break
-            p = Process(target=render, args=(opt, filename,))
-            process_list.append(p)
-        [p.start() for p in process_list] # start individual process
-        [p.join() for p in process_list] # wait till each process completes
+    with Pool(processes=opt.num_process) as pool:
+        pool.map(render, obj_shirt_list)
+
