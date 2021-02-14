@@ -93,7 +93,6 @@ def fill_in_camera_positions():
 
 
 def render(opt, filepath):
-    print (filepath)
 
     ####### Init Setup #########
     folder_name = os.path.split(filepath)[0]
@@ -103,6 +102,10 @@ def render(opt, filepath):
     render_path = os.path.join(opt.output_dir, 'RENDER', folder_name)
     svg_path = os.path.join(opt.output_dir, 'SVG', folder_name)
     mask_path = os.path.join(opt.output_dir, 'MASK', folder_name)
+
+    if os.path.exists(os.path.join(mask_path, '359_0_00.png')):
+        print ('skipping already rendered object...')
+        return
 
     os.makedirs(obj_path, exist_ok=True)
     os.makedirs(render_path, exist_ok=True)
@@ -242,9 +245,6 @@ if __name__ == '__main__':
     count = 0
 
     while (count < len(obj_shirt_list)):
-        # render(opt, obj_shirt_list[count])
-        # count += 1
-        # continue
         process_list = []
         for i in range(opt.num_process):
             try:
