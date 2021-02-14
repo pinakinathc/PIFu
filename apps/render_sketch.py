@@ -1,199 +1,258 @@
-# coding: utf-8
+# -*- coding: utf-8 -*-
 # author: pinakinathc
 
 import os
 import glob
-import random
 import argparse
 import numpy as np
+import warnings
+from multiprocessing import Process
+
 import bpy
-import bpy_extras
-import numpy
-import math
-import mathutils
-from mathutils import Matrix
+from render_freestyle_svg import register
 from mathutils import Vector
 
-def update_camera(camera, degrees, focus_point=mathutils.Vector((0.0, 13.0, 0.0)), distance=10.0):
-    radians = math.radians(degrees)
-    eul = mathutils.Euler((math.radians(90.0), math.radians(0.0), radians), 'XYZ')
-    camera.rotation_euler = eul
-    camera.location = mathutils.Vector((0.0, -distance, 13))
-    camera.location = mathutils.Vector((distance*math.sin(radians), -distance*math.cos(radians), 12))
+
+register()
+warnings.filterwarnings('ignore')
+
+def look_at(obj_camera, point):
+    direction = point - obj_camera.location
+    # point the cameras '-Z' and use its 'Y' as up
+    rot_quat = direction.to_track_quat('-Z', 'Y')
+    # assume we're using euler rotation
+    obj_camera.rotation_euler = rot_quat.to_euler()
 
 
-def get_calibration_matrix_K_from_blender(camd):
-    f_in_mm = camd.lens
-    scene = bpy.context.scene
-    resolution_x_in_px = scene.render.resolution_x
-    resolution_y_in_px = scene.render.resolution_y
-    print ('resolution: ', resolution_x_in_px, resolution_y_in_px)
-    scale = scene.render.resolution_percentage / 100
-    sensor_width_in_mm = camd.sensor_width
-    sensor_height_in_mm = camd.sensor_height
-    pixel_aspect_ratio = scene.render.pixel_aspect_x / scene.render.pixel_aspect_y
-    if (camd.sensor_fit == 'VERTICAL'):
-        s_u = resolution_x_in_px * scale / sensor_width_in_mm / pixel_aspect_ratio 
-        s_v = resolution_y_in_px * scale / sensor_height_in_mm
-    else: 
-        pixel_aspect_ratio = scene.render.pixel_aspect_x / scene.render.pixel_aspect_y
-        s_u = resolution_x_in_px * scale / sensor_width_in_mm
-        s_v = resolution_y_in_px * scale * pixel_aspect_ratio / sensor_height_in_mm
+def spherical_to_euclidian(elev, azimuth, r):
+    x_pos = r * np.cos(elev/180.0*np.pi) * np.cos(azimuth/180.0*np.pi)
+    y_pos = r * np.cos(elev/180.0*np.pi) * np.sin(azimuth/180.0*np.pi)
+    z_pos = r * np.sin(elev/180.0*np.pi)
+    return x_pos, y_pos, z_pos
+
+
+def iterateTillInsideBounds(val, bounds, origin, mean, std, random_state):
+    while val < bounds[0] or val > bounds[1] or (val > bounds[2] and val < bounds[3]):
+        val = round(origin + mean + std*random_state.randn())
+    return val
+
+
+def find_longest_diagonal(imported):
+    local_bbox_center = 0.125 * sum((Vector(b) for b in imported.bound_box), Vector())
+    ld = 0.0
+    for v in imported.bound_box:
+        lv = Vector(local_bbox_center) - Vector(v)
+        ld = max(ld, lv.length)
+    return ld
+
+
+def fill_in_camera_positions():
+    num_base_viewpoints = 360 # TODO: change to 360
+    num_add_viewpoints = 0
+
+    random_state = np.random.RandomState()
+
+
+    mean_azi = 0
+    std_azi = 7
+    mean_elev = 0
+    std_elev = 7
+    mean_r = 0
+    std_r = 7
+
+    delta_azi_max = 15
+    delta_elev_max = 15
+    delta_azi_min = 5
+    delta_elev_min = 5
+    delta_r = 0.1
+
+    azi_origins = np.linspace(0, 359, num_base_viewpoints)
+    elev_origin = 10
+    r_origin = 1.5
+
+    bound_azi = [(azi - delta_azi_max, azi + delta_azi_max, azi - delta_azi_min, azi + delta_azi_min) for azi in azi_origins]
+    bound_elev = (elev_origin - delta_elev_max, elev_origin + delta_elev_max, elev_origin - delta_elev_min, elev_origin + delta_elev_min)
+    bound_r = (r_origin - delta_r, r_origin + delta_r)
+
+    azis = []
+    elevs = []
+    for azi in azi_origins:
+        azis.append(azi)
+        elevs.append(elev_origin)
+
+    x_pos = []
+    y_pos = []
+    z_pos = []
+    for azi, elev in zip(azis, elevs):
+        x_pos_, y_pos_, z_pos_ = spherical_to_euclidian(elev, azi, r_origin)
+        x_pos.append(x_pos_)
+        y_pos.append(y_pos_)
+        z_pos.append(z_pos_)
+
+    return azis, elevs, x_pos, y_pos, z_pos
+
+
+def render(opt, filepath):
+    print (filepath)
+
+    ####### Init Setup #########
+    folder_name = os.path.split(filepath)[0]
+    folder_name = os.path.split(folder_name)[-1]
+
+    obj_path = os.path.join(opt.output_dir, 'GEO', 'OBJ', folder_name)
+    render_path = os.path.join(opt.output_dir, 'RENDER', folder_name)
+    svg_path = os.path.join(opt.output_dir, 'SVG', folder_name)
+    mask_path = os.path.join(opt.output_dir, 'MASK', folder_name)
+
+    os.makedirs(obj_path, exist_ok=True)
+    os.makedirs(render_path, exist_ok=True)
+    os.makedirs(svg_path, exist_ok=True)
+    os.makedirs(mask_path, exist_ok=True)
+
+    # copy obj file
+    cmd = 'cp %s %s' % (filepath, obj_path)
+    os.system(cmd)
+
+    # clean the default blender scene
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete(use_global=False)
+
+    ###### Import Obj #########
+    bpy.ops.import_scene.obj(filepath=filepath, axis_forward='-X')
+    obj_object = bpy.context.selected_objects[0]
+    bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+    maxDimension = 0.56
+    ld = find_longest_diagonal(obj_object)
+    scaleFactor = maxDimension / ld
+    obj_object.scale = (scaleFactor, scaleFactor, scaleFactor)
+
+    center = Vector((0.0, 0.0, 0.0))
+    obj_object.location = center
+
+    ###### Add a camera ########
+    bpy.ops.object.camera_add()
+    obj_camera = bpy.data.objects['Camera']
+
+    obj_camera.data.sensor_height = 32
+    obj_camera.data.sensor_width = 32
+    obj_camera.data.lens = 35
+    bpy.context.scene.camera = bpy.context.object
+
+    # Camera parameters:
+    azimuths, elevations, x_pos, y_pos, z_pos = fill_in_camera_positions()
+
+    # Set the canvas:
+    bpy.data.scenes['Scene'].render.resolution_x = 540
+    bpy.data.scenes['Scene'].render.resolution_y = 540
+    bpy.data.scenes['Scene'].render.resolution_percentage = 100
+
+    # Render preferences:
+    bpy.context.scene.render.engine = 'CYCLES'
+    bpy.context.scene.cycles.device = 'GPU'
+    cycles_preferences = bpy.context.preferences.addons['cycles'].preferences
+    cuda_devices, opencl_devices = cycles_preferences.get_devices()
+    cycles_preferences.compute_device_type = opt.device
+    cuda_devices, opencl_devices = cycles_preferences.get_devices()
+    for device in cuda_devices:
+        device.use = True
     
+    bpy.context.scene.cycles.samples = 4
+    bpy.context.scene.cycles.preview_samples = 4
+    bpy.context.scene.render.tile_x = 540
+    bpy.context.scene.render.tile_y = 540
+    bpy.context.scene.render.threads = 1024
+    bpy.context.scene.render.threads_mode = 'AUTO'
 
-    # Parameters of intrinsic calibration matrix K
-    alpha_u = f_in_mm * s_u
-    alpha_v = f_in_mm * s_v
-    u_0 = resolution_x_in_px * scale / 2
-    v_0 = resolution_y_in_px * scale / 2
-    skew = 0 # only use rectangular pixels
+    ########## Render Sketches ############
+    bpy.context.scene.view_layers['View Layer'].use_sky = False
+    bpy.context.scene.view_layers['View Layer'].use_ao = False
+    bpy.context.scene.view_layers['View Layer'].use_solid = False
+    bpy.context.scene.view_layers['View Layer'].use_strand = False
+    bpy.context.scene.view_layers['View Layer'].use_volumes = False
+    bpy.context.scene.render.film_transparent = True
+    bpy.data.scenes['Scene'].render.use_freestyle = True
 
-    K = Matrix(
-        ((alpha_u, skew,    u_0),
-        (    0  , alpha_v, v_0),
-        (    0  , 0,        1 )))
-    return K
+    # Parameters
+    bpy.data.scenes['Scene'].render.line_thickness = np.random.uniform(1, 1.5)
+    bpy.data.linestyles['LineStyle'].color = (0, 0, 0)
+    freestyle_settings = bpy.context.scene.view_layers['View Layer'].freestyle_settings
+    freestyle_settings.use_culling = True
+    freestyle_settings.use_smoothness = True
+    freestyle_settings.use_suggestive_contours = True
+    freestyle_settings.crease_angle = np.random.uniform(2.3, 2.6)
+    bpy.data.linestyles['LineStyle'].use_length_max = True
+    bpy.data.linestyles['LineStyle'].use_length_min = True
+    bpy.data.linestyles['LineStyle'].length_min = 11.1
+    bpy.data.linestyles['LineStyle'].use_chain_count = False
+    bpy.data.linestyles['LineStyle'].use_nodes = False
 
+    freestyle_settings.linesets['LineSet'].select_border = True
+    freestyle_settings.linesets['LineSet'].select_silhouette = True
+    freestyle_settings.linesets['LineSet'].select_crease = True
+    freestyle_settings.linesets['LineSet'].select_contour = True
+    freestyle_settings.linesets['LineSet'].select_external_contour = False
+    freestyle_settings.linesets['LineSet'].select_suggestive_contour = True
+    freestyle_settings.linesets['LineSet'].edge_type_combination = 'OR'
+    freestyle_settings.linesets['LineSet'].select_edge_mark = False
 
-def get_3x4_RT_matrix_from_blender(cam):
-    R_bcam2cv = Matrix(
-        ((1, 0,  0),
-         (0, -1, 0),
-         (0, 0, -1)))
+    bpy.context.scene.render.image_settings.file_format = 'PNG'
 
-    location, rotation = cam.matrix_world.decompose()[0:2]
-    R_world2bcam = rotation.to_matrix().transposed()
+    center = Vector((0.0, 0.0, 0.0))
+    for azi, elev, xx, yy, zz in zip(azimuths, elevations, x_pos, y_pos, z_pos):
+        obj_camera.location = (xx, yy, zz)
+        look_at(obj_camera, center)
 
-    T_world2bcam = -1*R_world2bcam @ location
+        # Render SVG
+        bpy.context.scene.render.filepath = os.path.join(svg_path, str(int(azi))+'_0_00')
+        bpy.context.scene.svg_export.use_svg_export = True
+        bpy.ops.render.render(write_still = False)
 
-    R_world2cv = R_bcam2cv@R_world2bcam
-    T_world2cv = R_bcam2cv@T_world2bcam
+        # Render PNG
+        bpy.context.scene.render.filepath = os.path.join(render_path, str(int(azi))+'_0_00')
+        bpy.context.scene.svg_export.use_svg_export = False
+        bpy.ops.render.render(write_still = True)
 
-    # put into 3x4 matrix
-    RT = Matrix((
-        R_world2cv[0][:] + (T_world2cv[0],),
-        R_world2cv[1][:] + (T_world2cv[1],),
-        R_world2cv[2][:] + (T_world2cv[2],)
-         ))
-    return RT
+    ######## Render Mask ############
+    bpy.context.scene.render.use_freestyle = False
+    bpy.context.scene.view_layers['View Layer'].use_solid = True
+    bpy.context.scene.view_layers['View Layer'].use_ao = True
+    bpy.context.scene.view_layers['View Layer'].use_volumes = True
+    bpy.context.scene.view_layers['View Layer'].use_strand = True
+    bpy.context.scene.view_layers['View Layer'].use_pass_object_index = True
 
-def get_3x4_P_matrix_from_blender(cam):
-    K = get_calibration_matrix_K_from_blender(cam.data)
-    RT = get_3x4_RT_matrix_from_blender(cam)
-    return K@RT, K, RT
+    for azi, elev, xx, yy, zz in zip(azimuths, elevations, x_pos, y_pos, z_pos):
+        obj_camera.location = (xx, yy, zz)
+        look_at(obj_camera, center)
+
+        bpy.context.scene.render.filepath = os.path.join(mask_path, str(int(azi))+'_0_00')
+        bpy.ops.render.render(write_still = True)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Created render of 2D sketch from 3D')
-    parser.add_argument('--input_dir', type=str, default='/vol/research/sketchcaption/extras/adobe-dataset/shirt_dataset_rest/*/shirt_mesh_r.obj',
-            help='Enter input dir to raw dataset')
-    parser.add_argument('--output_dir', type=str, default='../training_data', help='Enter output dir to rendered dataset')
-    parser.add_argument('--device', type=str, default='GPU', help='Use CPU or GPU')
+    parser = argparse.ArgumentParser(description='Create realistic 2D render sketch from 3D')
+    parser.add_argument('--input_dir', type=str, default='/vol/research/sketchcaption/extras/adobe-dataset/shirt_dataset_rest/*/shirt_mesh_r.obj', help='Enter input dir to raw dataset')
+    parser.add_argument('--output_dir', type=str, default='../training_data/', help='Enter output dir')
+    parser.add_argument('--device', type=str, default='CUDA', help='Use CPU or GPU')
+    parser.add_argument('--num_process', type=int, default=32, help='Number of Parallel Processes')
     opt = parser.parse_args()
 
-    objects_shirt_list = glob.glob(opt.input_dir)
-    output_dir = opt.output_dir
-    angle_step = 1
+    print ('Options:\n', opt)
 
-    for shirt_idx, shirt_data_path in enumerate(objects_shirt_list):
+    obj_shirt_list = glob.glob(opt.input_dir)[:20]
+    count = 0
 
-        folder_name = os.path.split(shirt_data_path)[0]
-        folder_name = os.path.split(folder_name)[-1]
-
-        obj_path = os.path.join(output_dir, 'GEO', 'OBJ', folder_name)
-        render_path = os.path.join(output_dir, 'RENDER', folder_name)
-        param_path = os.path.join(output_dir, 'PARAM', folder_name)
-        mask_path = os.path.join(output_dir, 'MASK', folder_name)
-
-        if os.path.exists(os.path.join(mask_path, '359_0_00.png')):
-            print ('skipping already rendered object...')
-            continue
-
-        os.makedirs(obj_path, exist_ok=True)
-        os.makedirs(render_path, exist_ok=True)
-        os.makedirs(param_path, exist_ok=True)
-        os.makedirs(mask_path, exist_ok=True)
-
-        objs = [ob for ob in bpy.context.scene.objects if ob.type in ('MESH')]
-        bpy.ops.object.delete({'selected_objects': objs})
-        bpy.ops.import_scene.obj(filepath=shirt_data_path)
-
-        # Setup env and center object
-        bpy.ops.transform.translate(value=(0,0,0))
-        bpy.context.scene.render.engine = 'CYCLES'
-        bpy.context.scene.cycles.device = opt.device
-        cycles_preferences = bpy.context.preferences.addons['cycles'].preferences
-        cuda_devices, opencl_devices = cycles_preferences.get_devices()
-        cycles_preferences.compute_device_type = 'CUDA'
-        cuda_devices, opencl_devices = cycles_preferences.get_devices()
-        for device in cuda_devices:
-            device.use = True
-        bpy.context.scene.camera.data.type = 'ORTHO'
-        bpy.data.worlds['World'].node_tree.nodes['Background'].inputs[0].default_value = (1,1,1,1)
-
-        # copy obj file
-        cmd = 'cp %s %s' % (shirt_data_path, obj_path)
-        print(cmd)
-        os.system(cmd)
-
-        for degree in range(0, 360, angle_step):
-            cam = bpy.data.objects['Camera']
-            bpy.context.scene.render.resolution_x = 512
-            bpy.context.scene.render.resolution_y = 512
-            # Add randomness to angle
-            update_camera(cam, degree+0.2*np.pi*(random.random()-0.5))
-            calib, _, _ = get_3x4_P_matrix_from_blender(cam)
-
-            #############################################
-            ''' Render Sketch '''
-            tree = bpy.context.scene.node_tree
-            if tree is not None:
-                links = tree.links
-                for node in tree.nodes:
-                    tree.nodes.remove(node)
-                render_node = tree.nodes.new(type='CompositorNodeRLayers')
-                composite_node = tree.nodes.new(type='CompositorNodeComposite')
-                links.new(render_node.outputs['Image'], composite_node.inputs['Image'])
-
-            # bpy.data.worlds['World'].node_tree.nodes['Background'].inputs[0].default_value = (1,1,1,1)
-            val = bpy.data.worlds['World'].node_tree.nodes['Background'].inputs[0].default_value
-            bpy.context.scene.render.use_freestyle = True
-            bpy.context.scene.view_layers['View Layer'].use_solid = False
-            bpy.context.scene.view_layers['View Layer'].use_ao = False
-            bpy.context.scene.view_layers['View Layer'].use_volumes = False
-            bpy.context.scene.view_layers['View Layer'].use_strand = False
-
-            bpy.context.scene.render.filepath=os.path.join(render_path, str(degree)+'_0_00')
-            bpy.ops.render.render(write_still=True)
-            np.save(os.path.join(param_path, str(degree)+'_0_00.npy'), calib)
-
-            ##############################################
-            ''' Render Mask '''
-            bpy.context.scene.render.use_freestyle = False
-            bpy.context.scene.view_layers['View Layer'].use_solid = True
-            bpy.context.scene.view_layers['View Layer'].use_ao = True
-            bpy.context.scene.view_layers['View Layer'].use_volumes = True
-            bpy.context.scene.view_layers['View Layer'].use_strand = True
-
-            bpy.context.scene.view_layers['View Layer'].use_pass_object_index = True
-            bpy.context.view_layer.objects.active = bpy.data.objects[2]
-            bpy.context.object.pass_index = 1
-            bpy.context.scene.use_nodes = True
-            tree = bpy.context.scene.node_tree
-
-            for node in tree.nodes:
-                tree.nodes.remove(node)
-
-            render_node = tree.nodes.new(type='CompositorNodeRLayers')
-            id_node = tree.nodes.new(type='CompositorNodeIDMask')
-            composite_node = tree.nodes.new(type='CompositorNodeComposite')
-
-            id_node.index = 1
-            links = tree.links
-            link1 = links.new(render_node.outputs['IndexOB'], id_node.inputs['ID value'])
-            link2 = links.new(id_node.outputs['Alpha'], composite_node.inputs['Image'])
-            bpy.context.scene.render.filepath='mask'
-
-            bpy.context.scene.render.filepath=os.path.join(mask_path, 
-                str(degree)+'_0_00')
-            bpy.ops.render.render(write_still=True)
+    while (count < len(obj_shirt_list)):
+        # render(opt, obj_shirt_list[count])
+        # count += 1
+        # continue
+        process_list = []
+        for i in range(opt.num_process):
+            try:
+                filename = obj_shirt_list[count]
+                count += 1
+            except IndexError:
+                break
+            p = Process(target=render, args=(opt, filename,))
+            process_list.append(p)
+        [p.start() for p in process_list] # start individual process
+        [p.join() for p in process_list] # wait till each process completes
