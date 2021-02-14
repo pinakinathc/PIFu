@@ -104,10 +104,6 @@ def render(filepath):
     svg_path = os.path.join(opt.output_dir, 'SVG', folder_name)
     mask_path = os.path.join(opt.output_dir, 'MASK', folder_name)
 
-    if os.path.exists(os.path.join(mask_path, '359_0_00.png')):
-        print ('skipping already rendered object...')
-        return
-
     os.makedirs(obj_path, exist_ok=True)
     os.makedirs(render_path, exist_ok=True)
     os.makedirs(svg_path, exist_ok=True)
@@ -244,6 +240,19 @@ if __name__ == '__main__':
 
     obj_shirt_list = glob.glob(opt.input_dir)
     count = 0
+
+    # Skip files already rendered
+    new_obj_shirt_list = []
+    for filepath in obj_shirt_list:
+        folder_name = os.path.split(filepath)[0]
+        folder_name = os.path.split(folder_name)[-1]
+        mask_path = os.path.join(output_dir, 'MASK', folder_name)
+        if os.path.exists(os.path.join(mask_path, '359_0_00.png')):
+            print ('skipping already rendered object...')
+            continue
+        else:
+            new_obj_shirt_list.append(filepath)
+    obj_shirt_list = new_obj_shirt_list
 
     with Pool(processes=opt.num_process) as pool:
         pool.map(render, obj_shirt_list)
