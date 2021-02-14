@@ -47,7 +47,7 @@ def find_longest_diagonal(imported):
 
 
 def fill_in_camera_positions():
-    num_base_viewpoints = 30 # TODO: change to 360
+    num_base_viewpoints = 360 # TODO: change to 360
     num_add_viewpoints = 0
 
     random_state = np.random.RandomState()
