@@ -241,7 +241,7 @@ if __name__ == '__main__':
 
     print ('Options:\n', opt)
 
-    obj_shirt_list = glob.glob(opt.input_dir)[:20]
+    obj_shirt_list = glob.glob(opt.input_dir)
     count = 0
 
     while (count < len(obj_shirt_list)):
