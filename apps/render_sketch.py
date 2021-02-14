@@ -242,7 +242,7 @@ if __name__ == '__main__':
 
     print ('Options:\n', opt)
 
-    obj_shirt_list = glob.glob(opt.input_dir)[:7]
+    obj_shirt_list = glob.glob(opt.input_dir)
     count = 0
 
     with Pool(processes=opt.num_process) as pool:
