@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# author: pinakinathc
+# author: yulia
+# modified: pinakinathc
 
 import os
 import glob
@@ -11,7 +12,6 @@ from multiprocessing import Process, Pool
 import bpy
 from render_freestyle_svg import register
 from mathutils import Vector
-
 
 register()
 warnings.filterwarnings('ignore')
