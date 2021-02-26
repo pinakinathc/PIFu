@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# author: pinakinathc
+# author: yulia
+# modified: pinakinathc
 
 import os
 import glob
@@ -11,7 +12,6 @@ from multiprocessing import Process, Pool
 import bpy
 from render_freestyle_svg import register
 from mathutils import Vector
-
 
 register()
 warnings.filterwarnings('ignore')
@@ -246,7 +246,7 @@ if __name__ == '__main__':
     for filepath in obj_shirt_list:
         folder_name = os.path.split(filepath)[0]
         folder_name = os.path.split(folder_name)[-1]
-        mask_path = os.path.join(output_dir, 'MASK', folder_name)
+        mask_path = os.path.join(opt.output_dir, 'MASK', folder_name)
         if os.path.exists(os.path.join(mask_path, '359_0_00.png')):
             print ('skipping already rendered object...')
             continue
