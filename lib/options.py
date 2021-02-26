@@ -41,6 +41,7 @@ class BaseOptions():
         g_train.add_argument('--freq_plot', type=int, default=10, help='freqency of the error plot')
         g_train.add_argument('--freq_save', type=int, default=50, help='freqency of the save_checkpoints')
         g_train.add_argument('--freq_save_ply', type=int, default=100, help='freqency of the save ply')
+        g_train.add_argument('--freq_eval', type=int, default=5000, help='frequency of the evaluation')
        
         g_train.add_argument('--no_gen_mesh', action='store_true')
         g_train.add_argument('--no_num_eval', action='store_true')
@@ -55,7 +56,7 @@ class BaseOptions():
 
         # Sampling related
         g_sample = parser.add_argument_group('Sampling')
-        g_sample.add_argument('--sigma', type=float, default=5.0, help='perturbation standard deviation for positions')
+        g_sample.add_argument('--sigma', type=float, default=0.1, help='perturbation standard deviation for positions')
 
         g_sample.add_argument('--num_sample_inout', type=int, default=5000, help='# of sampling points')
         g_sample.add_argument('--num_sample_color', type=int, default=0, help='# of sampling points')

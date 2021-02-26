@@ -102,7 +102,8 @@ class TrainDataset(Dataset):
 
     def get_subjects(self):
         all_subjects = os.listdir(self.RENDER)
-        var_subjects = np.loadtxt(os.path.join(self.root, 'val.txt'), dtype=str)
+        # var_subjects = np.loadtxt(os.path.join(self.root, 'val.txt'), dtype=str)
+        var_subjects = np.loadtxt('val.txt', dtype=str)
         if len(var_subjects) == 0:
             return all_subjects
 
@@ -140,6 +141,7 @@ class TrainDataset(Dataset):
         extrinsic_list = []
 
         for vid in view_ids:
+            vid = 359 - vid
             # param_path = os.path.join(self.PARAM, subject, '%d_%d_%02d.npy' % (vid, pitch, 0))
             render_path = os.path.join(self.RENDER, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
             mask_path = os.path.join(self.MASK, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
@@ -186,8 +188,8 @@ class TrainDataset(Dataset):
             # Transform under image pixel space
             trans_intrinsic = np.identity(4)
 
-            mask = Image.open(mask_path).convert('L')
-            render = Image.open(render_path).convert('RGB')
+            mask = Image.open(mask_path).convert('RGBA').split()[-1].convert('L')
+            render = Image.open(render_path).convert('RGBA').split()[-1].convert('RGB')
 
             if self.is_train:
                 # Pad images
@@ -270,7 +272,7 @@ class TrainDataset(Dataset):
         mesh = self.mesh_dic[subject]
         surface_points, _ = trimesh.sample.sample_surface(mesh, 4 * self.num_sample_inout)
         # sample_points = surface_points + np.random.normal(scale=self.opt.sigma, size=surface_points.shape)
-        sample_points = surface_points + np.random.normal(scale=0.2, size=surface_points.shape)
+        sample_points = surface_points + np.random.normal(scale=self.opt.sigma, size=surface_points.shape)
 
         # add random points within image space
         # length = self.B_MAX - self.B_MIN
@@ -308,7 +310,9 @@ class TrainDataset(Dataset):
 
         return {
             'samples': samples,
-            'labels': labels
+            'labels': labels,
+            'b_min': B_MIN,
+            'b_max': B_MAX,
         }
 
 
@@ -382,8 +386,8 @@ class TrainDataset(Dataset):
             'sid': sid,
             'yid': yid,
             'pid': pid,
-            'b_min': self.B_MIN,
-            'b_max': self.B_MAX,
+            # 'b_min': self.B_MIN,
+            # 'b_max': self.B_MAX,
         }
         render_data = self.get_render(subject, num_views=self.num_views, yid=yid, pid=pid,
                                         random_sample=self.opt.random_multiview)

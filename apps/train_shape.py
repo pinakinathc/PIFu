@@ -9,6 +9,7 @@ import json
 import numpy as np
 import cv2
 import random
+random.seed()
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -138,51 +139,56 @@ def train(opt):
 
             iter_data_time = time.time()
 
+            if train_idx % opt.freq_eval == 0:
+                #### test
+                with torch.no_grad():
+                    set_eval()
+
+                    if not opt.no_num_eval:
+                        test_losses = {}
+                        print('calc error (test) ...')
+                        test_errors = calc_error(opt, netG, cuda, test_dataset, 100)
+                        print('eval test MSE: {0:06f} IOU: {1:06f} prec: {2:06f} recall: {3:06f}'.format(*test_errors))
+                        MSE, IOU, prec, recall = test_errors
+                        test_losses['MSE(test)'] = MSE
+                        test_losses['IOU(test)'] = IOU
+                        test_losses['prec(test)'] = prec
+                        test_losses['recall(test)'] = recall
+
+                        print('calc error (train) ...')
+                        train_dataset.is_train = False
+                        train_errors = calc_error(opt, netG, cuda, train_dataset, 100)
+                        train_dataset.is_train = True
+                        print('eval train MSE: {0:06f} IOU: {1:06f} prec: {2:06f} recall: {3:06f}'.format(*train_errors))
+                        MSE, IOU, prec, recall = train_errors
+                        test_losses['MSE(train)'] = MSE
+                        test_losses['IOU(train)'] = IOU
+                        test_losses['prec(train)'] = prec
+                        test_losses['recall(train)'] = recall
+
+                    if not opt.no_gen_mesh:
+                        print('generate mesh (test) ...')
+                        for gen_idx in tqdm(range(opt.num_gen_mesh_test)):
+
+                            for idx, test_data in enumerate(test_dataset):
+                                if idx > 3:
+                                    break
+                            # test_data = random.choice(test_dataset)
+                                save_path = '%s/%s/test_eval_epoch%d_%s.obj' % (
+                                    opt.results_path, opt.name, epoch, test_data['name'])
+                                gen_mesh(opt, netG, cuda, test_data, save_path)
+
+                        print('generate mesh (train) ...')
+                        train_dataset.is_train = False
+                        for gen_idx in tqdm(range(opt.num_gen_mesh_test)):
+                            train_data = random.choice(train_dataset)
+                            save_path = '%s/%s/train_eval_epoch%d_%s.obj' % (
+                                opt.results_path, opt.name, epoch, train_data['name'])
+                            gen_mesh(opt, netG, cuda, train_data, save_path)
+                        train_dataset.is_train = True
+
         # update learning rate
         lr = adjust_learning_rate(optimizerG, epoch, lr, opt.schedule, opt.gamma)
-
-        #### test
-        with torch.no_grad():
-            set_eval()
-
-            if not opt.no_num_eval:
-                test_losses = {}
-                print('calc error (test) ...')
-                test_errors = calc_error(opt, netG, cuda, test_dataset, 100)
-                print('eval test MSE: {0:06f} IOU: {1:06f} prec: {2:06f} recall: {3:06f}'.format(*test_errors))
-                MSE, IOU, prec, recall = test_errors
-                test_losses['MSE(test)'] = MSE
-                test_losses['IOU(test)'] = IOU
-                test_losses['prec(test)'] = prec
-                test_losses['recall(test)'] = recall
-
-                print('calc error (train) ...')
-                train_dataset.is_train = False
-                train_errors = calc_error(opt, netG, cuda, train_dataset, 100)
-                train_dataset.is_train = True
-                print('eval train MSE: {0:06f} IOU: {1:06f} prec: {2:06f} recall: {3:06f}'.format(*train_errors))
-                MSE, IOU, prec, recall = train_errors
-                test_losses['MSE(train)'] = MSE
-                test_losses['IOU(train)'] = IOU
-                test_losses['prec(train)'] = prec
-                test_losses['recall(train)'] = recall
-
-            if not opt.no_gen_mesh:
-                print('generate mesh (test) ...')
-                for gen_idx in tqdm(range(opt.num_gen_mesh_test)):
-                    test_data = random.choice(test_dataset)
-                    save_path = '%s/%s/test_eval_epoch%d_%s.obj' % (
-                        opt.results_path, opt.name, epoch, test_data['name'])
-                    gen_mesh(opt, netG, cuda, test_data, save_path)
-
-                print('generate mesh (train) ...')
-                train_dataset.is_train = False
-                for gen_idx in tqdm(range(opt.num_gen_mesh_test)):
-                    train_data = random.choice(train_dataset)
-                    save_path = '%s/%s/train_eval_epoch%d_%s.obj' % (
-                        opt.results_path, opt.name, epoch, train_data['name'])
-                    gen_mesh(opt, netG, cuda, train_data, save_path)
-                train_dataset.is_train = True
 
 
 if __name__ == '__main__':
