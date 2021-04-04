@@ -100,11 +100,13 @@ def render(filepath):
     folder_name = os.path.split(folder_name)[-1]
 
     obj_path = os.path.join(opt.output_dir, 'GEO', 'OBJ', folder_name)
+    smooth_obj_path = os.path.join(opt.output_dir, 'GEO', 'SMOOTH_OBJ', folder_name)
     render_path = os.path.join(opt.output_dir, 'RENDER', folder_name)
     svg_path = os.path.join(opt.output_dir, 'SVG', folder_name)
     mask_path = os.path.join(opt.output_dir, 'MASK', folder_name)
 
     os.makedirs(obj_path, exist_ok=True)
+    os.makedirs(smooth_obj_path, exist_ok=True)
     os.makedirs(render_path, exist_ok=True)
     os.makedirs(svg_path, exist_ok=True)
     os.makedirs(mask_path, exist_ok=True)
@@ -175,11 +177,21 @@ def render(filepath):
     # Parameters
     bpy.data.scenes['Scene'].render.line_thickness = np.random.uniform(1, 1.5)
     bpy.data.linestyles['LineStyle'].color = (0, 0, 0)
+
+    obj_object.data.use_auto_smooth = True
+    obj_object.data.auto_smooth_angle = np.pi/180.0 * 90
+    obj_object.cycles.shadow_terminator_offset = 0.9
+    obj_object.modifiers.new(name='Smooth', type='SMOOTH')
+    obj_object.modifiers['Smooth'].iterations = 5
+    bpy.ops.export_scene.obj(filepath=os.path.join(mask_path, 'smooth'),
+        filter_glob='*.obj', axis_forward='-X')
+
     freestyle_settings = bpy.context.scene.view_layers['View Layer'].freestyle_settings
     freestyle_settings.use_culling = True
     freestyle_settings.use_smoothness = True
     freestyle_settings.use_suggestive_contours = True
-    freestyle_settings.crease_angle = np.random.uniform(2.3, 2.6)
+    freestyle_settings.crease_angle = np.random.uniform(np.pi/180.0*120, np.pi/180.0*134)
+    bpy.data.linestyles['LineStyle'].geometry_modifiers["Sampling"].sampling = 1.0
     bpy.data.linestyles['LineStyle'].use_length_max = True
     bpy.data.linestyles['LineStyle'].use_length_min = True
     bpy.data.linestyles['LineStyle'].length_min = 11.1
@@ -194,6 +206,9 @@ def render(filepath):
     freestyle_settings.linesets['LineSet'].select_suggestive_contour = True
     freestyle_settings.linesets['LineSet'].edge_type_combination = 'OR'
     freestyle_settings.linesets['LineSet'].select_edge_mark = False
+    freestyle_settings.linesets['LineSet'].linestyle.thickness = np.random.uniform(1, 1.5)
+    freestyle_settings.use_suggestive_contours = True
+    freestyle_settings.use_smoothness = True
 
     bpy.context.scene.render.image_settings.file_format = 'PNG'
 

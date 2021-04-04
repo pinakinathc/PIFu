@@ -57,6 +57,7 @@ def gen_mesh(opt, net, cuda, data, save_path, use_octree=True):
         save_img_list = []
         for v in range(image_tensor.shape[0]):
             save_img = (np.transpose(image_tensor[v].detach().cpu().numpy(), (1, 2, 0)) * 0.5 + 0.5)[:, :, ::-1] * 255.0
+            Image.fromarray(np.uint8(save_img[:,:,::-1])).save(save_img_path + '_%d.png'%v)    
             save_img_list.append(save_img)
         save_img = np.concatenate(save_img_list, axis=1)
         Image.fromarray(np.uint8(save_img[:,:,::-1])).save(save_img_path)
@@ -66,7 +67,7 @@ def gen_mesh(opt, net, cuda, data, save_path, use_octree=True):
         verts_tensor = torch.from_numpy(verts.T).unsqueeze(0).to(device=cuda).float()
         xyz_tensor = net.projection(verts_tensor, calib_tensor[:1])
         uv = xyz_tensor[:, :2, :]
-        color = index(image_tensor[:1], uv).detach().cpu().numpy()[0].T
+        color = index(image_tensor[:1], uv).detach().cpu().numpy()[0].T * 0
         color = color * 0.5 + 0.5
         save_obj_mesh_with_color(save_path, verts, faces, color)
     except Exception as e:

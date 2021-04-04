@@ -1,6 +1,7 @@
 from torch.utils.data import Dataset
 import numpy as np
 import os
+import glob
 import random
 import torchvision.transforms as transforms
 from PIL import Image, ImageOps
@@ -15,13 +16,15 @@ from apps.render_data import make_rotate
 log = logging.getLogger('trimesh')
 log.setLevel(40)
 
+np.random.seed(0)
+
 def load_trimesh(root_dir):
     folders = os.listdir(root_dir)
     meshs = {}
     for i, f in enumerate(folders):
         sub_name = f
         # meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, '%s_100k.obj' % sub_name))
-        meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r.obj'))
+        meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r_tmp_watertight.obj'))
 
     return meshs
 
@@ -132,19 +135,30 @@ class TrainDataset(Dataset):
         # The ids are an even distribution of num_views around view_id
         view_ids = [self.yaw_list[(yid + len(self.yaw_list) // num_views * offset) % len(self.yaw_list)]
                     for offset in range(num_views)]
-        if random_sample:
-            view_ids = np.random.choice(self.yaw_list, num_views, replace=False)
+        
+        # view_ids = [0, 45, 315]
+        # view_ids = [0, 120, 240]
+        if random_sample and self.is_train:
+            local_state = np.random.RandomState()
+            view_ids = local_state.choice(self.yaw_list, num_views, replace=False)
+        #     view_ids = np.random.choice(self.yaw_list, num_views, replace=False)
 
         calib_list = []
         render_list = []
         mask_list = []
         extrinsic_list = []
 
-        for vid in view_ids:
-            vid = 359 - vid
+        for idx, vid in enumerate(view_ids):
+            if vid >= 240 and False:
+                print ('getting random')
+                # tmp_subject = np.random.choice(self.subjects, 1)[0]
+                tmp_subject = 'A1ATGUDZOUIR'
+            else:
+                tmp_subject = subject
+            vid = (vid+180) % 360
             # param_path = os.path.join(self.PARAM, subject, '%d_%d_%02d.npy' % (vid, pitch, 0))
-            render_path = os.path.join(self.RENDER, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
-            mask_path = os.path.join(self.MASK, subject, '%d_%d_%02d.png' % (vid, pitch, 0))
+            render_path = os.path.join(self.RENDER, tmp_subject, '%d_%d_%02d.png' % (vid, pitch, 0))
+            mask_path = os.path.join(self.MASK, tmp_subject, '%d_%d_%02d.png' % (vid, pitch, 0))
 
             # loading calibration data
             # param = np.load(param_path, allow_pickle=True)
@@ -152,7 +166,7 @@ class TrainDataset(Dataset):
             ortho_ratio = 0.4 * (512 / self.load_size) # ortho_ratio = param.item().get('ortho_ratio')
             
             # world unit / model unit
-            vertices = self.mesh_dic[subject].vertices
+            vertices = self.mesh_dic[tmp_subject].vertices
             vmin = vertices.min(0)
             vmax = vertices.max(0)
             # up_axis = 1 if (vmax-vmin).argmax() == 1 else 2
@@ -281,9 +295,15 @@ class TrainDataset(Dataset):
         B_MAX = sample_points.max(0)
         B_MIN = sample_points.min(0)
         length = (B_MAX - B_MIN)
+        delta = length*1.0 //2
+        B_MIN =  B_MIN - delta
+        B_MAX = B_MAX + delta
+        length = B_MAX - B_MIN
         random_points = np.random.rand(self.num_sample_inout // 4, 3) * length + B_MIN
         sample_points = np.concatenate([sample_points, random_points], 0)
         np.random.shuffle(sample_points)
+        # if not self.is_train:
+        #     samples_points = np.random.rand(self.num_sample_inout*2, 3) * length + B_MIN
 
         inside = mesh.contains(sample_points)
         inside_points = sample_points[inside]
@@ -296,11 +316,11 @@ class TrainDataset(Dataset):
                          :self.num_sample_inout // 2] if nin > self.num_sample_inout // 2 else outside_points[
                                                                                                :(self.num_sample_inout - nin)]
 
-        # print ('inside points & outside points: ', inside_points.shape, outside_points.shape)
         samples = np.concatenate([inside_points, outside_points], 0).T
         labels = np.concatenate([np.ones((1, inside_points.shape[0])), np.zeros((1, outside_points.shape[0]))], 1)
 
-        # save_samples_truncted_prob('out.ply', samples.T, labels.T)
+        # save_samples_truncted_prob('%s.ply'%subject, samples.T, labels.T)
+        # input('check')
         # exit()
 
         samples = torch.Tensor(samples).float()
