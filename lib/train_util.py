@@ -23,12 +23,8 @@ def reshape_multiview_tensors(image_tensor, calib_tensor, pos_emb_tensor):
         calib_tensor.shape[2],
         calib_tensor.shape[3]
     )
-    pos_emb_tensor = pos_emb_tensor.view(
-        pos_emb_tensor.shape[0] * pos_emb_tensor.shape[1],
-        pos_emb_tensor.shape[2]
-    )
 
-    return image_tensor, calib_tensor, pos_emb_tensor
+    return image_tensor, calib_tensor
 
 
 def reshape_sample_tensor(sample_tensor, num_views):
