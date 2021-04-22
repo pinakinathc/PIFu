@@ -7,7 +7,7 @@ import cv2
 from PIL import Image
 from tqdm import tqdm
 
-def reshape_multiview_tensors(image_tensor, calib_tensor, pos_emb_tensor):
+def reshape_multiview_tensors(image_tensor, calib_tensor):
     # Careful here! Because we put single view and multiview together,
     # the returned tensor.shape is 5-dim: [B, num_views, C, W, H]
     # So we need to convert it back to 4-dim [B*num_views, C, W, H]
