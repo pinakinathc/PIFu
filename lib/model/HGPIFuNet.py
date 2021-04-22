@@ -91,7 +91,7 @@ class HGPIFuNet(BasePIFuNet):
         xy = xyz[:, :2, :]
         z = xyz[:, 2:3, :]
 
-        in_img = (xy[:, 0] >= -1.0) & (xy[:, 0] <= 1.0) & (xy[:, 1] >= -1.0) & (xy[:, 1] <= 1.0)
+        # in_img = (xy[:, 0] >= -1.0) & (xy[:, 0] <= 1.0) & (xy[:, 1] >= -1.0) & (xy[:, 1] <= 1.0)
 
         z_feat = self.normalizer(z, calibs=calibs)
 
@@ -110,7 +110,8 @@ class HGPIFuNet(BasePIFuNet):
             point_local_feat = torch.cat(point_local_feat_list, 1)
 
             # out of image plane is always set to 0
-            pred = in_img[:,None].float() * self.surface_classifier(point_local_feat)
+            # pred = in_img[:,None].float() * self.surface_classifier(point_local_feat)
+            pred = self.surface_classifier(point_local_feat)
             self.intermediate_preds_list.append(pred)
 
         self.preds = self.intermediate_preds_list[-1]

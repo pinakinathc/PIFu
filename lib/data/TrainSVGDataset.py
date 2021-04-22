@@ -3,6 +3,11 @@ import numpy as np
 import os
 import glob
 import random
+from svg.path import parse_path
+from svg.path.path import Line
+from xml.dom import minidom
+from bresenham import bresenham
+import scipy
 import torchvision.transforms as transforms
 from PIL import Image, ImageOps
 import cv2
@@ -54,6 +59,36 @@ def save_samples_truncted_prob(fname, points, prob):
                       )
 
 
+def svg2img(render_path, is_train=False, p_mask=None):
+    '''Reads SVG image and converts to rendered partial sketch'''
+    doc = minidom.parse(render_path)
+    height = int(doc.getElementsByTagName('svg')[0].getAttribute('height'))
+    width = int(doc.getElementsByTagName('svg')[0].getAttribute('width'))
+    raster_image = np.zeros((height, width), dtype=np.float32)
+    path_strings = [path.getAttribute('d') for path
+                in doc.getElementsByTagName('path')]
+    doc.unlink()
+
+    Len = len(path_strings)
+    mask_len = int(Len*p_mask)
+    start_idx = np.random.randint(0, Len-mask_len)
+    path_strings = path_strings[:start_idx] + path_strings[start_idx+mask_len:]
+
+    for path_string in path_strings:
+        path = parse_path(path_string)
+        for e in path:
+            if isinstance(e, Line):
+                x0 = round(e.start.real)
+                y0 = round(e.start.imag)
+                x1 = round(e.end.real)
+                y1 = round(e.end.imag)
+                cordList = list(bresenham(x0, y0, x1, y1))
+                for cord in cordList:
+                    raster_image[cord[1], cord[0]] = 255.0
+    raster_image = 255.0 - scipy.ndimage.binary_dilation(raster_image) * 255.0
+    return Image.fromarray(raster_image).convert('RGB')
+
+
 class TrainDataset(Dataset):
     @staticmethod
     def modify_commandline_options(parser, is_train):
@@ -65,7 +100,7 @@ class TrainDataset(Dataset):
 
         # Path setup
         self.root = self.opt.dataroot
-        self.RENDER = os.path.join(self.root, 'RENDER')
+        self.SVG = os.path.join(self.root, 'SVG')
         self.MASK = os.path.join(self.root, 'MASK')
         self.PARAM = os.path.join(self.root, 'PARAM')
         self.UV_MASK = os.path.join(self.root, 'UV_MASK')
@@ -105,7 +140,7 @@ class TrainDataset(Dataset):
         self.mesh_dic = load_trimesh(self.OBJ)
 
     def get_subjects(self):
-        all_subjects = os.listdir(self.RENDER)
+        all_subjects = os.listdir(self.SVG)
         # all_subjects = ['T7UNJRFVTMZV', 'L9UVRMFHQWVK']
         # var_subjects = np.loadtxt(os.path.join(self.root, 'val.txt'), dtype=str)
         var_subjects = np.loadtxt('val.txt', dtype=str)
@@ -138,35 +173,31 @@ class TrainDataset(Dataset):
         view_ids = [self.yaw_list[(yid + len(self.yaw_list) // num_views * offset) % len(self.yaw_list)]
                     for offset in range(num_views)]
         
-        local_state = np.random.RandomState()
         if random_sample and self.is_train:
+            local_state = np.random.RandomState()
             view_ids = local_state.choice(self.yaw_list, num_views, replace=False)
+        #     view_ids = np.random.choice(self.yaw_list, num_views, replace=False)
+
+        # if not self.is_train:
+        #     view_ids = [0, 0, 0]
 
         calib_list = []
         render_list = []
         mask_list = []
         extrinsic_list = []
 
-        partial_sketch = False
-        flag = 0
-
         for idx, vid in enumerate(view_ids):
-            if local_state.randn() < 0.3 and False:
-                # print ('getting random')
-                tmp_subject = local_state.choice(self.subjects, 1)[0]
-                # print (tmp_subject, subject)
-                # partial_sketch = True
-                # flag += 1
+            if idx <= 1 and False:
+                print ('getting random')
+                # tmp_subject = np.random.choice(self.subjects, 1)[0]
+                tmp_subject = 'L9UVRMFHQWVK'
             else:
                 tmp_subject = subject
-                # partial_sketch = False
             vid = (vid+180) % 360
-
-            render_path = os.path.join(self.RENDER, tmp_subject, '%d_%d_%02d.png' % (vid, pitch, 0))
+            # param_path = os.path.join(self.PARAM, subject, '%d_%d_%02d.npy' % (vid, pitch, 0))
+            render_path = os.path.join(self.SVG, tmp_subject, '%d_%d_%06d.svg' % (vid, pitch, 1))
             mask_path = os.path.join(self.MASK, tmp_subject, '%d_%d_%02d.png' % (vid, pitch, 0))
 
-            # loading calibration data
-            # param = np.load(param_path, allow_pickle=True)
             # pixel unit / world unit
             ortho_ratio = 0.4 * (512 / self.load_size) # ortho_ratio = param.item().get('ortho_ratio')
             
@@ -184,7 +215,7 @@ class TrainDataset(Dataset):
             scale = 0.9 / max(vmax - vmin)
 
             # camera center world coordinate
-            center = vmed # center = param.item().get('center')
+            center = vmed
 
             # model rotation
             R = np.matmul(make_rotate(math.radians(pitch), 0, 0), make_rotate(0, math.radians(vid), 0))
@@ -196,9 +227,6 @@ class TrainDataset(Dataset):
             extrinsic = np.concatenate([extrinsic, np.array([0, 0, 0, 1]).reshape(1, 4)], 0)
             # Match camera space to image pixel space
             scale_intrinsic = np.identity(4)
-            # scale_intrinsic[0, 0] = scale / ortho_ratio
-            # scale_intrinsic[1, 1] = -scale / ortho_ratio
-            # scale_intrinsic[2, 2] = scale / ortho_ratio
 
             scale_intrinsic[0, 0] = scale
             scale_intrinsic[1, 1] = -scale
@@ -206,25 +234,12 @@ class TrainDataset(Dataset):
 
             # Match image pixel space to image uv space
             uv_intrinsic = np.identity(4)
-            # uv_intrinsic[0, 0] = 1.0 / float(self.opt.loadSize // 2)
-            # uv_intrinsic[1, 1] = 1.0 / float(self.opt.loadSize // 2)
-            # uv_intrinsic[2, 2] = 1.0 / float(self.opt.loadSize // 2)
             # Transform under image pixel space
             trans_intrinsic = np.identity(4)
 
             mask = Image.open(mask_path).convert('RGBA').split()[-1].convert('L')
-            render = Image.open(render_path).convert('RGBA').split()[-1].convert('RGB')
-
-            if partial_sketch:
-                render = np.array(render)
-                h, w, _ = render.shape
-                render[:, w//2, :] = 0 if local_state.randn() <= 0.5
-                if local_state.randn() <= 0.5:
-                    render[:, :w//2, :] = 0
-                else:
-                    render[:, w//2:, :] = 0
-                render = Image.fromarray(render)
-                partial_sketch = False
+            render = svg2img(render_path, self.is_train, p_mask=0.5)
+            # render = Image.open(render_path).convert('RGBA').split()[-1].convert('RGB')
 
             if self.is_train:
                 # Pad images
@@ -286,7 +301,8 @@ class TrainDataset(Dataset):
             mask_list.append(mask)
 
             render = self.to_tensor(render)
-            # render = mask.expand_as(render) * render
+            ''' We ignore the mask and use only sketch to create 3D models'''
+            # render = mask.expand_as(render) * render 
 
             render_list.append(render)
             calib_list.append(calib)
@@ -296,7 +312,7 @@ class TrainDataset(Dataset):
             'img': torch.stack(render_list, dim=0),
             'calib': torch.stack(calib_list, dim=0),
             'extrinsic': torch.stack(extrinsic_list, dim=0),
-            'mask': torch.stack(mask_list, dim=0),
+            # 'mask': torch.stack(mask_list, dim=0)
         }
 
     def select_sampling_method(self, subject):
