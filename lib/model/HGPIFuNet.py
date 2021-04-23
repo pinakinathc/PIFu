@@ -65,7 +65,7 @@ class HGPIFuNet(BasePIFuNet):
         if not self.training:
             self.im_feat_list = [self.im_feat_list[-1]]
 
-    def query(self, points, calibs, transforms=None, labels=None):
+    def query(self, points, calibs, pos_emb, transforms=None, labels=None):
         '''
         Given 3D points, query the network predictions for each point.
         Image features should be pre-computed before this call.
@@ -94,6 +94,7 @@ class HGPIFuNet(BasePIFuNet):
         # in_img = (xy[:, 0] >= -1.0) & (xy[:, 0] <= 1.0) & (xy[:, 1] >= -1.0) & (xy[:, 1] <= 1.0)
 
         z_feat = self.normalizer(z, calibs=calibs)
+        pos_emb = pos_emb.unsqueeze(2).repeat(1, 1, z_feat.shape[-1])
 
         if self.opt.skip_hourglass:
             tmpx_local_feature = self.index(self.tmpx, xy)
@@ -102,7 +103,8 @@ class HGPIFuNet(BasePIFuNet):
 
         for im_feat in self.im_feat_list:
             # [B, Feat_i + z, N]
-            point_local_feat_list = [self.index(im_feat, xy), z_feat]
+            ''' 256 (features) + 1 (z-coordinate) + 10 (pos_emb) = 267 dimension '''
+            point_local_feat_list = [self.index(im_feat, xy), z_feat, pos_emb]
 
             if self.opt.skip_hourglass:
                 point_local_feat_list.append(tmpx_local_feature)
@@ -134,12 +136,12 @@ class HGPIFuNet(BasePIFuNet):
         
         return error
 
-    def forward(self, images, points, calibs, transforms=None, labels=None):
+    def forward(self, images, points, calibs, pos_emb, transforms=None, labels=None):
         # Get image feature
         self.filter(images)
 
         # Phase 2: point query
-        self.query(points=points, calibs=calibs, transforms=transforms, labels=labels)
+        self.query(points=points, calibs=calibs, pos_emb=pos_emb, transforms=transforms, labels=labels)
 
         # get the prediction
         res = self.get_preds()

@@ -100,15 +100,18 @@ def train(opt):
             image_tensor = train_data['img'].to(device=cuda)
             calib_tensor = train_data['calib'].to(device=cuda)
             sample_tensor = train_data['samples'].to(device=cuda)
+            pos_emb_tensor = train_data['pos_emb'].to(device=cuda)
 
             image_tensor, calib_tensor = reshape_multiview_tensors(image_tensor, calib_tensor)
+            pos_emb_tensor = pos_emb_tensor.view(
+                pos_emb_tensor.shape[0]*pos_emb_tensor.shape[1], pos_emb_tensor.shape[2])
 
             if opt.num_views > 1:
                 sample_tensor = reshape_sample_tensor(sample_tensor, opt.num_views)
 
             label_tensor = train_data['labels'].to(device=cuda)
 
-            res, error = netG.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
+            res, error = netG.forward(image_tensor, sample_tensor, calib_tensor, pos_emb_tensor, labels=label_tensor)
 
             optimizerG.zero_grad()
             error = torch.mean(error)

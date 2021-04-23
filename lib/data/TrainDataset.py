@@ -146,6 +146,7 @@ class TrainDataset(Dataset):
         render_list = []
         mask_list = []
         extrinsic_list = []
+        pos_emb_list = []
 
         partial_sketch = False
         flag = 0
@@ -218,7 +219,6 @@ class TrainDataset(Dataset):
             if partial_sketch:
                 render = np.array(render)
                 h, w, _ = render.shape
-                render[:, w//2, :] = 0 if local_state.randn() <= 0.5
                 if local_state.randn() <= 0.5:
                     render[:, :w//2, :] = 0
                 else:
@@ -288,15 +288,22 @@ class TrainDataset(Dataset):
             render = self.to_tensor(render)
             # render = mask.expand_as(render) * render
 
+            pos_emb = []
+            for p in [1, 2, 4, 8, 16]:
+                pos_emb.append(np.sin(np.radians(vid*p)))
+                pos_emb.append(np.cos(np.radians(vid*p)))
+
             render_list.append(render)
             calib_list.append(calib)
             extrinsic_list.append(extrinsic)
+            pos_emb_list.append(torch.tensor(pos_emb))
 
         return {
             'img': torch.stack(render_list, dim=0),
             'calib': torch.stack(calib_list, dim=0),
             'extrinsic': torch.stack(extrinsic_list, dim=0),
             'mask': torch.stack(mask_list, dim=0),
+            'pos_emb': torch.stack(pos_emb_list, dim=0)
         }
 
     def select_sampling_method(self, subject):

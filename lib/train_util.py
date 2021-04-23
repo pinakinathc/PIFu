@@ -44,6 +44,7 @@ def reshape_sample_tensor(sample_tensor, num_views):
 def gen_mesh(opt, net, cuda, data, save_path, use_octree=True):
     image_tensor = data['img'].to(device=cuda)
     calib_tensor = data['calib'].to(device=cuda)
+    pos_emb_tensor = data['pos_emb'].to(device=cuda)
 
     try:
         net.filter(image_tensor)
@@ -64,7 +65,7 @@ def gen_mesh(opt, net, cuda, data, save_path, use_octree=True):
         Image.fromarray(np.uint8(save_img[:,:,::-1])).save(save_img_path)
 
         verts, faces, _, _ = reconstruction(
-            net, cuda, calib_tensor, opt.resolution, b_min, b_max, use_octree=use_octree)
+            net, cuda, calib_tensor, pos_emb_tensor, opt.resolution, b_min, b_max, use_octree=use_octree)
         verts_tensor = torch.from_numpy(verts.T).unsqueeze(0).to(device=cuda).float()
         xyz_tensor = net.projection(verts_tensor, calib_tensor[:1])
         uv = xyz_tensor[:, :2, :]
@@ -162,11 +163,12 @@ def calc_error(opt, net, cuda, dataset, num_tests):
             image_tensor = data['img'].to(device=cuda)
             calib_tensor = data['calib'].to(device=cuda)
             sample_tensor = data['samples'].to(device=cuda).unsqueeze(0)
+            pos_emb_tensor = data['pos_emb'].to(device=cuda)
             if opt.num_views > 1:
                 sample_tensor = reshape_sample_tensor(sample_tensor, opt.num_views)
             label_tensor = data['labels'].to(device=cuda).unsqueeze(0)
 
-            res, error = net.forward(image_tensor, sample_tensor, calib_tensor, labels=label_tensor)
+            res, error = net.forward(image_tensor, sample_tensor, calib_tensor, pos_emb_tensor, labels=label_tensor)
 
             IOU, prec, recall = compute_acc(res, label_tensor)
 
