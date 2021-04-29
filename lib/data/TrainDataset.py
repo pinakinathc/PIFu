@@ -218,7 +218,6 @@ class TrainDataset(Dataset):
             if partial_sketch:
                 render = np.array(render)
                 h, w, _ = render.shape
-                render[:, w//2, :] = 0 if local_state.randn() <= 0.5
                 if local_state.randn() <= 0.5:
                     render[:, :w//2, :] = 0
                 else:
