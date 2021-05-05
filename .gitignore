@@ -1,1 +1,7 @@
 checkpoints/*
+*.submit_file
+*__pycache__*
+*.log
+*.error
+*.out
+results/*

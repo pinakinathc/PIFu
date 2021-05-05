@@ -9,6 +9,7 @@ import cv2
 import torch
 from PIL.ImageFilter import GaussianBlur
 import trimesh
+import igl
 import logging
 import math
 from apps.render_data import make_rotate
@@ -25,7 +26,8 @@ def load_trimesh(root_dir):
     for i, f in enumerate(folders):
         sub_name = f
         # meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, '%s_100k.obj' % sub_name))
-        meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r_tmp_watertight.obj'))
+        # meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r_tmp_watertight.obj'))
+        meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r_tmp.obj'))
 
     return meshs
 
@@ -39,8 +41,8 @@ def save_samples_truncted_prob(fname, points, prob):
     :param prob: [N, 1] array of predictions in the range [0~1]
     :return:
     '''
-    r = (prob > 0.5).reshape([-1, 1]) * 255
-    g = (prob < 0.5).reshape([-1, 1]) * 255
+    r = prob.reshape([-1, 1])/prob.max() * 255
+    g = r
     b = np.zeros(r.shape)
 
     to_save = np.concatenate([points, r, g, b], axis=-1)
@@ -182,7 +184,7 @@ class TrainDataset(Dataset):
             
             vmed = np.median(vertices, 0)
             vmed[up_axis] = 0.5*(vmax[up_axis]+vmin[up_axis])
-            scale = 0.9 / max(vmax - vmin)
+            scale = 0.7 / max(vmax - vmin)
 
             # camera center world coordinate
             center = vmed # center = param.item().get('center')
@@ -314,7 +316,8 @@ class TrainDataset(Dataset):
         mesh = self.mesh_dic[subject]
         surface_points, _ = trimesh.sample.sample_surface(mesh, 4 * self.num_sample_inout)
         # sample_points = surface_points + np.random.normal(scale=self.opt.sigma, size=surface_points.shape)
-        sample_points = surface_points + np.random.normal(scale=self.opt.sigma, size=surface_points.shape)
+        sample_points = surface_points[:self.num_sample_inout//4]
+        # sample_points = np.random.normal(scale=self.opt.sigma, size=surface_points.shape)
 
         # add random points within image space
         # length = self.B_MAX - self.B_MIN
@@ -327,27 +330,18 @@ class TrainDataset(Dataset):
         # B_MIN =  B_MIN - delta
         # B_MAX = B_MAX + delta
         # length = B_MAX - B_MIN
-        random_points = np.random.rand(self.num_sample_inout // 4, 3) * length + B_MIN
+        random_points = np.random.rand(3*self.num_sample_inout // 4, 3) * length + B_MIN
         sample_points = np.concatenate([sample_points, random_points], 0)
         np.random.shuffle(sample_points)
         # if not self.is_train:
         #     samples_points = np.random.rand(self.num_sample_inout*2, 3) * length + B_MIN
 
-        inside = mesh.contains(sample_points)
-        inside_points = sample_points[inside]
-        outside_points = sample_points[np.logical_not(inside)]
+        samples = sample_points[:self.num_sample_inout].T
 
-        nin = inside_points.shape[0]
-        inside_points = inside_points[
-                        :self.num_sample_inout // 2] if nin > self.num_sample_inout // 2 else inside_points
-        outside_points = outside_points[
-                         :self.num_sample_inout // 2] if nin > self.num_sample_inout // 2 else outside_points[
-                                                                                               :(self.num_sample_inout - nin)]
+        labels = np.abs(igl.signed_distance(samples.T, mesh.vertices, mesh.faces)[0]) # UDF
+        # labels = np.concatenate([np.ones((1, inside_points.shape[0])), np.zeros((1, outside_points.shape[0]))], 1)
 
-        samples = np.concatenate([inside_points, outside_points], 0).T
-        labels = np.concatenate([np.ones((1, inside_points.shape[0])), np.zeros((1, outside_points.shape[0]))], 1)
-
-        # save_samples_truncted_prob('%s.ply'%subject, samples.T, labels.T)
+        # save_samples_truncted_prob('%s.ply'%subject, samples.T, labels)
         # input('check')
         # exit()
 

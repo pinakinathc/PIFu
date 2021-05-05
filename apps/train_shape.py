@@ -144,7 +144,7 @@ def train(opt):
 
             if train_idx % opt.freq_eval == 0:
                 #### test
-                with torch.no_grad():
+                # with torch.no_grad():
                     set_eval()
 
                     if not opt.no_num_eval:

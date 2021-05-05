@@ -73,4 +73,4 @@ class BasePIFuNet(nn.Module):
         Get the network loss from the last query
         :return: loss term
         '''
-        return self.error_term(self.preds, self.labels)
+        return self.error_term(torch.clamp(self.preds, max=0.5), torch.clamp(self.labels, max=0.5))

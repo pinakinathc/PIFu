@@ -24,7 +24,8 @@ class HGPIFuNet(BasePIFuNet):
     def __init__(self,
                  opt,
                  projection_mode='orthogonal',
-                 error_term=nn.MSELoss(),
+                 # error_term=nn.MSELoss(),
+                 error_term=nn.L1Loss(),
                  ):
         super(HGPIFuNet, self).__init__(
             projection_mode=projection_mode,
@@ -41,7 +42,7 @@ class HGPIFuNet(BasePIFuNet):
             filter_channels=self.opt.mlp_dim,
             num_views=self.opt.num_views,
             no_residual=self.opt.no_residual,
-            last_op=nn.Sigmoid())
+            last_op=None)
 
         self.normalizer = DepthNormalizer(opt)
 
