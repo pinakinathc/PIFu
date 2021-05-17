@@ -21,11 +21,10 @@ np.random.seed(0)
 
 def load_trimesh(root_dir):
     folders = os.listdir(root_dir)
-    # folders = ['T7UNJRFVTMZV', 'L9UVRMFHQWVK']
+    # folders = ['A1YENASWUJWB', 'A2UOBZJIFYZI']
     meshs = {}
     for i, f in enumerate(folders):
         sub_name = f
-        # meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, '%s_100k.obj' % sub_name))
         # meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r_tmp_watertight.obj'))
         meshs[sub_name] = trimesh.load(os.path.join(root_dir, f, 'shirt_mesh_r_tmp.obj'))
 
@@ -108,7 +107,7 @@ class TrainDataset(Dataset):
 
     def get_subjects(self):
         all_subjects = os.listdir(self.RENDER)
-        # all_subjects = ['T7UNJRFVTMZV', 'L9UVRMFHQWVK']
+        # all_subjects = ['A1YENASWUJWB', 'A2UOBZJIFYZI']
         # var_subjects = np.loadtxt(os.path.join(self.root, 'val.txt'), dtype=str)
         var_subjects = np.loadtxt('val.txt', dtype=str)
         if len(var_subjects) == 0:
@@ -168,9 +167,6 @@ class TrainDataset(Dataset):
             render_path = os.path.join(self.RENDER, tmp_subject, '%d_%d_%02d.png' % (vid, pitch, 0))
             mask_path = os.path.join(self.MASK, tmp_subject, '%d_%d_%02d.png' % (vid, pitch, 0))
 
-            # loading calibration data
-            # param = np.load(param_path, allow_pickle=True)
-            # pixel unit / world unit
             ortho_ratio = 0.4 * (512 / self.load_size) # ortho_ratio = param.item().get('ortho_ratio')
             
             # world unit / model unit
@@ -215,7 +211,6 @@ class TrainDataset(Dataset):
             # Transform under image pixel space
             trans_intrinsic = np.identity(4)
 
-            mask = Image.open(mask_path).convert('RGBA').split()[-1].convert('L')
             render = Image.open(render_path).convert('RGBA').split()[-1].convert('RGB')
 
             if partial_sketch:
@@ -232,7 +227,6 @@ class TrainDataset(Dataset):
                 # Pad images
                 pad_size = int(0.1 * self.load_size)
                 render = ImageOps.expand(render, pad_size, fill=0)
-                mask = ImageOps.expand(mask, pad_size, fill=0)
 
                 w, h = render.size
                 th, tw = self.load_size, self.load_size
@@ -241,7 +235,6 @@ class TrainDataset(Dataset):
                 if self.opt.random_flip and np.random.rand() > 0.5:
                     scale_intrinsic[0, 0] *= -1
                     render = transforms.RandomHorizontalFlip(p=1.0)(render)
-                    mask = transforms.RandomHorizontalFlip(p=1.0)(mask)
 
                 # random scale
                 if self.opt.random_scale:
@@ -249,7 +242,6 @@ class TrainDataset(Dataset):
                     w = int(rand_scale * w)
                     h = int(rand_scale * h)
                     render = render.resize((w, h), Image.BILINEAR)
-                    mask = mask.resize((w, h), Image.NEAREST)
                     scale_intrinsic *= rand_scale
                     scale_intrinsic[3, 3] = 1
 
@@ -270,7 +262,6 @@ class TrainDataset(Dataset):
                 y1 = int(round((h - th) / 2.)) + dy
 
                 render = render.crop((x1, y1, x1 + tw, y1 + th))
-                mask = mask.crop((x1, y1, x1 + tw, y1 + th))
 
                 render = self.aug_trans(render)
 
@@ -283,12 +274,7 @@ class TrainDataset(Dataset):
             calib = torch.Tensor(np.matmul(intrinsic, extrinsic)).float()
             extrinsic = torch.Tensor(extrinsic).float()
 
-            mask = transforms.Resize(self.load_size)(mask)
-            mask = transforms.ToTensor()(mask).float()
-            mask_list.append(mask)
-
             render = self.to_tensor(render)
-            # render = mask.expand_as(render) * render
 
             pos_emb = []
             for p in [1, 2, 4, 8, 16]:
@@ -304,7 +290,6 @@ class TrainDataset(Dataset):
             'img': torch.stack(render_list, dim=0),
             'calib': torch.stack(calib_list, dim=0),
             'extrinsic': torch.stack(extrinsic_list, dim=0),
-            'mask': torch.stack(mask_list, dim=0),
             'pos_emb': torch.stack(pos_emb_list, dim=0)
         }
 

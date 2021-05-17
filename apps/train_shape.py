@@ -176,7 +176,6 @@ def train(opt):
                             for idx, test_data in enumerate(test_dataset):
                                 if idx > 3:
                                     break
-                            # test_data = random.choice(test_dataset)
                                 save_path = '%s/%s/test_eval_epoch%d_%s.obj' % (
                                     opt.results_path, opt.name, epoch, test_data['name'])
                                 gen_mesh(opt, netG, cuda, test_data, save_path)
